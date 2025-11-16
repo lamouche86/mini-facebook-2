@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Mini Messenger Avancé</title>
+<style>
+:root{
+  --bg:#f0f2f5;--panel:#fff;--blue:#0084ff;--accent:#0084ff;--text:#111;--muted:#6b7280;
+  --bubble-blue:linear-gradient(180deg,#0077f2,#0096ff);
+}
+[data-theme="dark"]{
+  --bg:#0f1724;--panel:#0b1220;--text:#e6eef8;--muted:#9aa6b2;--accent:#58a6ff;
+}
+html,body{height:100%;margin:0;font-family:Inter, "Segoe UI", Roboto, Arial; background:var(--bg);color:var(--text);}
+.app{display:flex;height:100vh;gap:16px;padding:16px;box-sizing:border-box;}
+.rooms{width:260px;background:var(--panel);border-radius:12px;padding:12px;box-shadow:0 6px 18px rgba(2,6,23,0.07);overflow:auto;}
+.room-item{display:flex;gap:10px;align-items:center;padding:8px;border-radius:10px;cursor:pointer;}
+.room-item.active{background:rgba(0,132,255,0.07);}
+.avatar{width:40px;height:40px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#fff;background:var(--accent);font-weight:700;overflow:hidden;}
+.chat{flex:1;display:flex;flex-direction:column;border-radius:12px;overflow:hidden;background:var(--panel);box-shadow:0 8px 24px rgba(2,6,23,0.07);position:relative;}
+.chat::before{
+  content:'';
+  position:absolute;
+  top:0;left:0;width:100%;height:100%;
+  background:linear-gradient(-45deg,#ff9a9e,#fad0c4,#a1c4fd,#c2e9fb);
+  background-size:400% 400%;
+  z-index:0;
+  animation:gradientBG 15s ease infinite;
+}
+@keyframes gradientBG{
+  0%{background-position:0% 50%;}
+  50%{background-position:100% 50%;}
+  100%{background-position:0% 50%;}
+}
+.chat-header, .messages, .composer{position:relative; z-index:1;}
+.chat-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid rgba(0,0,0,0.04);}
+.messages{flex:1;padding:16px;overflow:auto;display:flex;flex-direction:column;gap:10px;background:linear-gradient(180deg,rgba(0,0,0,0.01),transparent);position:relative;}
+.msg-row{display:flex;gap:8px;align-items:flex-end;position:relative;}
+.msg-bubble{max-width:70%;padding:10px 14px;border-radius:16px;box-shadow:0 6px 12px rgba(2,6,23,0.06);position:relative;}
+.msg-me{margin-left:auto;border-bottom-right-radius:6px;background:var(--bubble-blue);color:white;}
+.msg-other{background:linear-gradient(180deg,#f7f8fa,#fff);color:var(--text);}
+.msg-meta{font-size:12px;color:var(--muted);margin-top:6px;display:flex;gap:8px;align-items:center;}
+.composer{display:flex;padding:12px;border-top:1px solid rgba(0,0,0,0.04);gap:8px;align-items:center;}
+.composer input[type="text"]{flex:1;padding:10px 12px;border-radius:20px;border:1px solid #ddd;}
+.composer input[type="file"]{padding:5px;}
+.composer button{padding:10px 14px;border-radius:14px;border:none;background:var(--blue);color:white;cursor:pointer;}
+.small{font-size:12px;color:var(--muted);}
+.ghost{background:transparent;border:1px solid rgba(0,0,0,0.06);padding:8px;border-radius:8px;cursor:pointer;}
+.bubble-effect, .reaction-pop{
+  position:absolute;
+  width:20px;height:20px;
+  border-radius:50%;
+  animation:floatUp 1s ease forwards;
+  z-index:2;
+}
+.reaction-pop{font-size:18px;width:auto;height:auto;pointer-events:none;animation:popUp 0.8s forwards;}
+@keyframes floatUp{
+  0%{transform:translateY(0) scale(1);opacity:1;}
+  100%{transform:translateY(-50px) scale(1.5);opacity:0;}
+}
+@keyframes popUp{
+  0%{transform:translateY(0) scale(0.5);opacity:0;}
+  50%{transform:translateY(-10px) scale(1.2);opacity:1;}
+  100%{transform:translateY(-30px) scale(1);opacity:0;}
+}
+#settingsPanel{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:var(--panel);padding:20px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.2);width:300px;z-index:100;}
+.video-container{position:relative;width:100%;overflow:hidden;}
+.video-container video{width:100%;border-radius:12px;margin-bottom:10px;}
+.reactions{display:flex;gap:5px;margin-top:5px;}
+.reaction-btn{cursor:pointer;font-size:16px;background:transparent;border:none;}
+@media(max-width:900px){.rooms{display:none;}}
+</style>
+</head>
+<body>
+<div class="app" id="app" data-theme="">
+  <aside class="rooms" id="roomsPanel">
+    <h3>Salons / Vidéos</h3>
+    <div id="roomList"></div>
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <input id="newRoomName" placeholder="Créer salon" style="flex:1;padding:8px;border-radius:8px;border:1px solid #ddd"/>
+      <button id="createRoomBtn" class="ghost">Créer</button>
+    </div>
+    <hr/>
+    <div class="small">Compte</div>
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+      <div id="meAvatar" class="avatar">U</div>
+      <div style="flex:1">
+        <div id="meName" style="font-weight:600">Utilisateur</div>
+      </div>
+      <button id="settingsBtn" class="ghost">⚙️ Paramètres</button>
+    </div>
+    <div style="margin-top:8px;display:flex;gap:8px">
+      <input type="file" id="avatarFile" accept="image/*"/>
+      <button id="uploadAvatar" class="ghost">Uploader</button>
+    </div>
+    <div style="margin-top:12px">
+      <div class="small">Mode</div>
+      <div style="margin-top:6px;display:flex;gap:8px">
+        <button id="themeToggle" class="ghost">🌙 / ☀️</button>
+      </div>
+    </div>
+  </aside>
+
+  <main class="chat">
+    <div class="chat-header">
+      <div style="display:flex;gap:12px;align-items:center">
+        <div id="roomAvatar" class="avatar">G</div>
+        <div>
+          <div id="roomTitle" style="font-weight:700">Sélectionne un salon</div>
+          <div id="roomSubtitle" class="small">Aucun salon</div>
+        </div>
+      </div>
+      <div>
+        <button id="clearChatBtn" class="ghost">⋮</button>
+      </div>
+    </div>
+
+    <div id="messages" class="messages"></div>
+
+    <div class="composer">
+      <input id="messageInput" type="text" placeholder="Écrire un message..." />
+      <input id="imageInput" type="file" accept="image/*" />
+      <input id="videoInput" type="file" accept="video/*" />
+      <button id="sendBtn">Envoyer</button>
+    </div>
+  </main>
+</div>
+
+<div id="settingsPanel">
+<h3>Paramètres</h3>
+<label>Avatar (lettre ou emoji):</label>
+<input id="avatarInput" type="text" maxlength="2" placeholder="U" style="width:100%;padding:8px;margin-top:4px;margin-bottom:10px;border-radius:6px;border:1px solid #ddd;"/>
+<label>Pseudo :</label>
+<input id="nameInput" type="text" placeholder="Utilisateur" style="width:100%;padding:8px;margin-top:4px;margin-bottom:10px;border-radius:6px;border:1px solid #ddd;"/>
+<div style="text-align:right;">
+  <button id="saveSettingsBtn" class="ghost">Enregistrer</button>
+  <button id="closeSettingsBtn" class="ghost">❌</button>
+</div>
+</div>
+
+<script type="module">
+const roomListEl = document.getElementById('roomList');
+const createRoomBtn = document.getElementById('createRoomBtn');
+const newRoomName = document.getElementById('newRoomName');
+const messagesEl = document.getElementById('messages');
+const sendBtn = document.getElementById('sendBtn');
+const messageInput = document.getElementById('messageInput');
+const imageInput = document.getElementById('imageInput');
+const videoInput = document.getElementById('videoInput');
+
+const meAvatar = document.getElementById('meAvatar');
+const meName = document.getElementById('meName');
+
+const roomTitle = document.getElementById('roomTitle');
+const roomAvatarEl = document.getElementById('roomAvatar');
+
+const themeToggle = document.getElementById('themeToggle');
+
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsPanel = document.getElementById('settingsPanel');
+const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+const avatarInput = document.getElementById('avatarInput');
+const nameInput = document.getElementById('nameInput');
+
+const clearChatBtn = document.getElementById('clearChatBtn');
+
+let currentRoomId = 'general';
+let rooms = {};
+
+// ----- Rooms -----
+createRoomBtn.addEventListener('click', ()=>{
+  const name = newRoomName.value.trim(); if(!name) return;
+  const id = name.replace(/\s+/g,'_').toLowerCase();
+  rooms[id] = {name, messages:[]};
+  renderRooms();
+  newRoomName.value='';
+});
+
+function renderRooms(){
+  roomListEl.innerHTML='';
+  for(const id in rooms){
+    const r = rooms[id];
+    const item = document.createElement('div'); item.className='room-item';
+    item.dataset.id=id;
+    if(id===currentRoomId) item.classList.add('active');
+    item.innerHTML = `<div class="avatar">${r.name.slice(0,1).toUpperCase()}</div>
+      <div style="flex:1"><div style="font-weight:600">${r.name}</div></div>`;
+    item.addEventListener('click', ()=>{ currentRoomId=id; renderRooms(); renderMessages(); });
+    roomListEl.appendChild(item);
+  }
+}
+
+// ----- Messages -----
+function renderMessages(){
+  messagesEl.innerHTML='';
+  const msgs = rooms[currentRoomId]?.messages || [];
+  for(const m of msgs){
+    const row = document.createElement('div'); row.className='msg-row';
+    const bubble = document.createElement('div'); bubble.className='msg-bubble '+(m.isMe?'msg-me':'msg-other');
+    if(m.type==='image'){
+      bubble.innerHTML = `<div style="font-weight:600;margin-bottom:6px;font-size:13px">${m.name}</div>
+                          <img src="${m.src}" style="max-width:100%;border-radius:10px"/>`;
+    } else if(m.type==='video'){
+      bubble.innerHTML = `<div style="font-weight:600;margin-bottom:6px;font-size:13px">${m.name}</div>
+                          <div class="video-container"><video src="${m.src}" controls></video></div>`;
+    } else {
+      bubble.innerHTML = `<div style="font-weight:600;margin-bottom:6px;font-size:13px">${m.name}</div>
+                          <div class="msg-text">${m.text}</div>`;
+    }
+    // Ajouter zone réactions
+    const reactionsDiv = document.createElement('div'); reactionsDiv.className='reactions';
+    ['❤️','😂','😮','😢','👍'].forEach(e=>{
+      const btn = document.createElement('button'); btn.className='reaction-btn'; btn.textContent=e;
+      btn.addEventListener('click', ev=>{
+        const pop = document.createElement('div'); pop.className='reaction-pop'; pop.textContent=e;
+        row.appendChild(pop);
+        setTimeout(()=>pop.remove(),800);
+      });
+      reactionsDiv.appendChild(btn);
+    });
+    bubble.appendChild(reactionsDiv);
+
+    if(m.isMe) row.style.justifyContent='flex-end';
+    row.appendChild(bubble);
+    messagesEl.appendChild(row);
+  }
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+// ----- Bulles animées -----
+function createBubbleEffect(){
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble-effect';
+  bubble.style.left = `${Math.random() * 90 + 5}%`;
+  bubble.style.bottom = '10px';
+  messagesEl.appendChild(bubble);
+  setTimeout(()=>bubble.remove(), 1000);
+}
+
+// ----- Envoi message -----
+sendBtn.addEventListener('click', sendMessage);
+messageInput.addEventListener('keydown', (e)=> { if(e.key==='Enter') sendMessage(); });
+
+function sendMessage(){
+  const text = messageInput.value.trim();
+  const imgFile = imageInput.files[0];
+  const vidFile = videoInput.files[0];
+  if(!text && !imgFile && !vidFile) return;
+
+  if(!rooms[currentRoomId]) rooms[currentRoomId]={name:'Général', messages:[]};
+
+  if(imgFile){
+    const src = URL.createObjectURL(imgFile);
+    rooms[currentRoomId].messages.push({name: meName.textContent, type:'image', src, isMe:true});
+  }
+  if(vidFile){
+    const src = URL.createObjectURL(vidFile);
+    rooms[currentRoomId].messages.push({name: meName.textContent, type:'video', src, isMe:true});
+  }
+  if(text){
+    rooms[currentRoomId].messages.push({name: meName.textContent, type:'text', text, isMe:true});
+  }
+
+  renderMessages();
+  createBubbleEffect();
+
+  messageInput.value=''; imageInput.value=''; videoInput.value='';
+}
+
+// ----- Paramètres -----
+settingsBtn.addEventListener('click', ()=>{
+  avatarInput.value = meAvatar.textContent;
+  nameInput.value = meName.textContent;
+  settingsPanel.style.display='block';
+});
+closeSettingsBtn.addEventListener('click', ()=>{ settingsPanel.style.display='none'; });
+saveSettingsBtn.addEventListener('click', ()=>{
+  meAvatar.textContent = avatarInput.value.trim().slice(0,2) || 'U';
+  meName.textContent = nameInput.value.trim() || 'Utilisateur';
+  settingsPanel.style.display='none';
+});
+
+// ----- Thème -----
+const appEl = document.getElementById('app');
+const savedTheme = localStorage.getItem('mm_theme') || 'light';
+setTheme(savedTheme);
+themeToggle.addEventListener('click', ()=> setTheme(appEl.getAttribute('data-theme')==='dark'?'light':'dark'));
+function setTheme(t){ if(t==='dark') appEl.setAttribute('data-theme','dark'); else appEl.setAttribute('data-theme',''); localStorage.setItem('mm_theme', t); }
+
+// ----- Suppression des messages -----
+clearChatBtn.addEventListener('click', ()=>{
+  if(confirm("Supprimer tous les messages de ce salon ?")){
+    if(rooms[currentRoomId]) rooms[currentRoomId].messages=[];
+    renderMessages();
+  }
+});
+
+// ----- Boot -----
+rooms['general']={name:'Général', messages:[]};
+renderRooms();
+renderMessages();
+</script>
+</body>
+</html>
